@@ -1,15 +1,12 @@
--- BitsAndBytes - Computer Themed Game
--- License: MIT
--- Copyright (c) 2025 Jericho Crosby (Chalwk)
-
 local ipairs = ipairs
+local math_min = math.min
+local math_sin = math.sin
+local math_cos = math.cos
+local math_abs = math.abs
+local math_max = math.max
+local math_pi = math.pi
 local math_floor = math.floor
 local math_random = math.random
-local math_abs = math.abs
-local math_min = math.min
-local math_cos = math.cos
-local math_sin = math.sin
-local math_pi = math.pi
 local table_insert = table.insert
 local table_remove = table.remove
 
@@ -19,37 +16,44 @@ Game.__index = Game
 function Game.new()
     local instance = setmetatable({}, Game)
 
-    instance.screenWidth = 800
-    instance.screenHeight = 600
-    instance.cellSize = 20
-    instance.mazeWidth = 25
-    instance.mazeHeight = 25
+    instance.screenWidth = 1000
+    instance.screenHeight = 700
+    instance.mazeSize = 15
+    instance.cellSize = 40
     instance.maze = {}
-    instance.dataBits = {}
-    instance.powerCores = {}
-    instance.specialItems = {}
-    instance.viruses = {}
-    instance.bitRunner = {}
+    instance.player = {x = 1, y = 1}
+    instance.exit = {x = 1, y = 1}
     instance.gameOver = false
     instance.gameWon = false
-    instance.score = 0
-    instance.lives = 3
-    instance.level = 1
-    instance.firewallMode = false
-    instance.firewallTimer = 0
-    instance.firewallDuration = 10
+    instance.holdToMove = false
+    instance.difficulty = "medium"
+    instance.theme = "retro"
     instance.animations = {}
     instance.particles = {}
-    instance.difficulty = "normal"
-    instance.gameMode = "classic"
+    instance.bits = {}
+    instance.powerups = {}
+    instance.viruses = {}
+    instance.firewalls = {}
+    instance.dataPackets = {}
+    instance.invincible = false
+    instance.invincibleTimer = 0
+    instance.score = 0
+    instance.lives = 3
+    instance.powerupActive = nil
+    instance.powerupTimer = 0
+    instance.startTime = 0
+    instance.elapsedTime = 0
+    instance.bitsCollected = 0
+    instance.totalBits = 0
 
-    instance.fonts = {
-        small = love.graphics.newFont(12),
-        medium = love.graphics.newFont(16),
-        large = love.graphics.newFont(24),
-        veryLarge = love.graphics.newFont(48)
+    instance.powerupTypes = {
+        {name = "Firewall", color = {1, 0.5, 0}, duration = 5, effect = "scare"},
+        {name = "Encryption", color = {0, 1, 1}, duration = 8, effect = "slow"},
+        {name = "Antivirus", color = {0, 1, 0}, duration = 6, effect = "kill"},
+        {name = "Overclock", color = {1, 0, 1}, duration = 4, effect = "speed"}
     }
 
+    instance:generateMaze()
     return instance
 end
 
@@ -60,553 +64,491 @@ function Game:setScreenSize(width, height)
 end
 
 function Game:calculateCellSize()
-    local maxWidth = self.screenWidth * 0.8
-    local maxHeight = self.screenHeight * 0.7
-    self.cellSize = math_floor(math_min(maxWidth / self.mazeWidth, maxHeight / self.mazeHeight))
-    self.boardX = (self.screenWidth - self.cellSize * self.mazeWidth) / 2
-    self.boardY = (self.screenHeight - self.cellSize * self.mazeHeight) / 2 + 20
+    local maxSize = math_min(self.screenWidth, self.screenHeight) * 0.85
+    self.cellSize = math_floor(maxSize / self.mazeSize)
+    self.mazeX = (self.screenWidth - self.cellSize * self.mazeSize) / 2
+    self.mazeY = (self.screenHeight - self.cellSize * self.mazeSize) / 2 + 30
 end
 
 function Game:generateMaze()
-    -- Initialize maze with circuit walls
     self.maze = {}
-    for x = 1, self.mazeWidth do
-        self.maze[x] = {}
-        for y = 1, self.mazeHeight do
-            self.maze[x][y] = 1 -- 1 = circuit wall, 0 = data path
+    for i = 1, self.mazeSize do
+        self.maze[i] = {}
+        for j = 1, self.mazeSize do
+            self.maze[i][j] = {
+                walls = {top = true, right = true, bottom = true, left = true},
+                visited = false,
+                path = false,
+                bit = math_random() < 0.7,
+                powerup = math_random() < 0.1,
+                firewall = math_random() < 0.05
+            }
         end
     end
 
-    -- Use recursive backtracking to generate maze
-    local function carvePassage(x, y)
-        self.maze[x][y] = 0
+    self:carvePassages(1, 1)
+    self.player = {x = 1, y = 1}
+    self.exit = {x = self.mazeSize, y = self.mazeSize}
+    self.maze[self.exit.y][self.exit.x].exit = true
 
-        local directions = {
-            { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 }
-        }
-
-        -- Shuffle directions
-        for i = 4, 2, -1 do
-            local j = math_random(1, i)
-            directions[i], directions[j] = directions[j], directions[i]
-        end
-
-        for _, dir in ipairs(directions) do
-            local nx, ny = x + dir[1] * 2, y + dir[2] * 2
-            if nx >= 1 and nx <= self.mazeWidth and ny >= 1 and ny <= self.mazeHeight and self.maze[nx][ny] == 1 then
-                self.maze[x + dir[1]][y + dir[2]] = 0
-                carvePassage(nx, ny)
-            end
-        end
-    end
-
-    -- Start from a random even position
-    local startX, startY = 2, 2
-    if startX % 2 == 0 then startX = startX + 1 end
-    if startY % 2 == 0 then startY = startY + 1 end
-    carvePassage(startX, startY)
-
-    -- Create entrance and exit
-    self.maze[2][1] = 0
-    self.maze[self.mazeWidth - 1][self.mazeHeight] = 0
-
-    -- Ensure minimum path width and add some open areas
-    self:improveMaze()
+    self:generateBits()
+    self:generatePowerups()
+    self:generateViruses()
+    self:generateFirewalls()
+    self:generateDataPackets()
 end
 
-function Game:improveMaze()
-    -- Add some open areas and ensure connectivity
-    for i = 1, 5 do
-        local x = math_random(3, self.mazeWidth - 2)
-        local y = math_random(3, self.mazeHeight - 2)
-        for dx = -1, 1 do
-            for dy = -1, 1 do
-                local nx, ny = x + dx, y + dy
-                if nx >= 1 and nx <= self.mazeWidth and ny >= 1 and ny <= self.mazeHeight then
-                    self.maze[nx][ny] = 0
-                end
-            end
-        end
-    end
-end
+function Game:carvePassages(x, y)
+    self.maze[y][x].visited = true
+    self.maze[y][x].path = true
 
-function Game:placeGameElements()
-    self.dataBits = {}
-    self.powerCores = {}
-    self.specialItems = {}
-
-    -- Place data bits in accessible areas
-    for x = 1, self.mazeWidth do
-        for y = 1, self.mazeHeight do
-            if self.maze[x][y] == 0 then
-                -- Data bits (regular collectibles)
-                if math_random() > 0.3 then -- 70% chance for data bit
-                    table_insert(self.dataBits, { x = x, y = y, collected = false })
-                end
-
-                -- Power cores (less frequent)
-                if math_random() > 0.95 then -- 5% chance for power core
-                    table_insert(self.powerCores, { x = x, y = y, collected = false })
-                end
-
-                -- Special items (very rare)
-                if math_random() > 0.98 then -- 2% chance for special item
-                    table_insert(self.specialItems, {
-                        x = x,
-                        y = y,
-                        type = math_random(1, 3), -- 1: Speed, 2: Extra Life, 3: Score Multiplier
-                        collected = false
-                    })
-                end
-            end
-        end
-    end
-
-    -- Place bit runner at start position
-    self.bitRunner = {
-        x = 2,
-        y = 2,
-        direction = "right",
-        nextDirection = "right",
-        processorAngle = 0,
-        processorSpeed = 8,
-        size = self.cellSize * 0.4,
-        value = 0 -- Binary value that changes
+    local directions = {
+        {dx = 0, dy = -1, wall = "top", opposite = "bottom"},
+        {dx = 1, dy = 0, wall = "right", opposite = "left"},
+        {dx = 0, dy = 1, wall = "bottom", opposite = "top"},
+        {dx = -1, dy = 0, wall = "left", opposite = "right"}
     }
 
-    -- Place viruses
-    self:placeViruses()
+    for i = #directions, 2, -1 do
+        local j = math_random(1, i)
+        directions[i], directions[j] = directions[j], directions[i]
+    end
+
+    for _, dir in ipairs(directions) do
+        local nx, ny = x + dir.dx, y + dir.dy
+        if nx >= 1 and nx <= self.mazeSize and ny >= 1 and ny <= self.mazeSize and not self.maze[ny][nx].visited then
+            self.maze[y][x].walls[dir.wall] = false
+            self.maze[ny][nx].walls[dir.opposite] = false
+            self:carvePassages(nx, ny)
+        end
+    end
 end
 
-function Game:placeViruses()
+function Game:generateBits()
+    self.bits = {}
+    self.totalBits = 0
+    for y = 1, self.mazeSize do
+        for x = 1, self.mazeSize do
+            if self.maze[y][x].path and self.maze[y][x].bit and not (x == 1 and y == 1) then
+                table_insert(self.bits, {x = x, y = y, collected = false})
+                self.totalBits = self.totalBits + 1
+            end
+        end
+    end
+end
+
+function Game:generatePowerups()
+    self.powerups = {}
+    local powerupCount = math_floor(self.mazeSize * 0.3)
+
+    for i = 1, powerupCount do
+        local x, y = math_random(2, self.mazeSize - 1), math_random(2, self.mazeSize - 1)
+        if self.maze[y][x].path and not (x == 1 and y == 1) then
+            local powerupType = self.powerupTypes[math_random(1, #self.powerupTypes)]
+            table_insert(self.powerups, {
+                x = x,
+                y = y,
+                collected = false,
+                type = powerupType,
+                color = powerupType.color
+            })
+        end
+    end
+end
+
+function Game:generateViruses()
     self.viruses = {}
-    local virusColors = {
-        { 1,   0.2, 0.2 }, -- Red virus
-        { 0.2, 1,   1 },   -- Cyan virus
-        { 1,   0.2, 1 },   -- Magenta virus
-        { 1,   0.6, 0.2 }  -- Orange virus
-    }
+    local virusCount = math_floor(self.mazeSize * 0.4)
 
-    local virusNames = { "Trojan", "Worm", "Spyware", "Ransomware" }
-    local virusBehaviors = { "replicate", "spread", "corrupt", "encrypt" }
-
-    for i = 1, 4 do
-        -- Find a suitable position away from bit runner
-        local vx, vy
-        repeat
-            vx = math_random(5, self.mazeWidth - 4)
-            vy = math_random(5, self.mazeHeight - 4)
-        until self.maze[vx][vy] == 0 and math_abs(vx - self.bitRunner.x) + math_abs(vy - self.bitRunner.y) > 10
-
-        table_insert(self.viruses, {
-            x = vx,
-            y = vy,
-            color = virusColors[i],
-            name = virusNames[i],
-            behavior = virusBehaviors[i],
-            speed = math_random(20, 30) * 0.01,
-            encrypted = false,
-            direction = "right",
-            size = self.cellSize * 0.35,
-            spikes = i -- Number of spikes for visual variety
-        })
+    for i = 1, virusCount do
+        local x, y = math_random(2, self.mazeSize - 1), math_random(2, self.mazeSize - 1)
+        if self.maze[y][x].path then
+            table_insert(self.viruses, {
+                x = x,
+                y = y,
+                speed = math_random(0.8, 2.5),
+                angle = math_random() * math_pi * 2,
+                color = {math_random(0.8, 1), math_random(0.2, 0.4), math_random(0.2, 0.4)},
+                size = math_random(0.8, 1.3),
+                pulse = 0,
+                scared = false,
+                moveTimer = 0
+            })
+        end
     end
 end
 
-function Game:startNewGame(difficulty, gameMode)
-    self.difficulty = difficulty or "normal"
-    self.gameMode = gameMode or "classic"
+function Game:generateFirewalls()
+    self.firewalls = {}
+    local firewallCount = math_floor(self.mazeSize * 0.2)
 
-    -- Adjust maze size based on difficulty
+    for i = 1, firewallCount do
+        local x, y = math_random(1, self.mazeSize), math_random(1, self.mazeSize)
+        if not self.maze[y][x].path then
+            table_insert(self.firewalls, {
+                x = x,
+                y = y,
+                active = true,
+                pulse = 0
+            })
+        end
+    end
+end
+
+function Game:generateDataPackets()
+    self.dataPackets = {}
+    local packetCount = math_floor(self.mazeSize * 0.15)
+
+    for i = 1, packetCount do
+        local x, y = math_random(2, self.mazeSize - 1), math_random(2, self.mazeSize - 1)
+        if self.maze[y][x].path then
+            table_insert(self.dataPackets, {
+                x = x,
+                y = y,
+                collected = false,
+                value = math_random(50, 200),
+                rotation = math_random() * math_pi * 2
+            })
+        end
+    end
+end
+
+function Game:startNewGame(difficulty, theme)
+    self.difficulty = difficulty or "medium"
+    self.theme = theme or "retro"
+
     if self.difficulty == "easy" then
-        self.mazeWidth = 20
-        self.mazeHeight = 20
-    elseif self.difficulty == "normal" then
-        self.mazeWidth = 25
-        self.mazeHeight = 25
-    else -- hard
-        self.mazeWidth = 30
-        self.mazeHeight = 30
+        self.mazeSize = 12
+        self.lives = 5
+    elseif self.difficulty == "medium" then
+        self.mazeSize = 18
+        self.lives = 3
+    else
+        self.mazeSize = 24
+        self.lives = 2
+    end
+
+    if self.theme == "cyber" then
+        self.playerColor = {0, 1, 1}
+        self.pathColor = {0.1, 0.3, 0.6}
+        self.wallColor = {0.3, 0.8, 1}
+    elseif self.theme == "matrix" then
+        self.playerColor = {0, 1, 0}
+        self.pathColor = {0, 0.2, 0}
+        self.wallColor = {0.1, 0.8, 0.1}
+    else
+        self.playerColor = {1, 0.5, 0}
+        self.pathColor = {0.4, 0.2, 0.6}
+        self.wallColor = {1, 0.8, 0.2}
     end
 
     self:calculateCellSize()
     self:generateMaze()
-    self:placeGameElements()
-
     self.gameOver = false
     self.gameWon = false
     self.score = 0
-    self.lives = 3
-    self.level = 1
-    self.firewallMode = false
-    self.firewallTimer = 0
-    self.animations = {}
-    self.particles = {}
+    self.bitsCollected = 0
+    self.invincible = false
+    self.invincibleTimer = 0
+    self.powerupActive = nil
+    self.powerupTimer = 0
+    self.startTime = love.timer.getTime()
+    self.elapsedTime = 0
+end
+
+function Game:setHoldToMove(enabled)
+    self.holdToMove = enabled
+end
+
+function Game:toggleHoldToMove()
+    self.holdToMove = not self.holdToMove
+end
+
+function Game:getHoldToMove()
+    return self.holdToMove
+end
+
+function Game:toggleInvincibility()
+    self.invincible = not self.invincible
+    self.invincibleTimer = 3
 end
 
 function Game:resetGame()
-    self:startNewGame(self.difficulty, self.gameMode)
+    self:startNewGame(self.difficulty, self.theme)
 end
 
-function Game:update(dt)
+function Game:movePlayer(dx, dy)
     if self.gameOver then return end
 
-    -- Update bit runner animation and binary value
-    self.bitRunner.processorAngle = (self.bitRunner.processorAngle + dt * self.bitRunner.processorSpeed) % (math_pi * 2)
-    self.bitRunner.value = love.timer.getTime() % 2 > 1 and 1 or 0 -- Alternating 0/1
+    local newX, newY = self.player.x + dx, self.player.y + dy
 
-    -- Update firewall mode timer
-    if self.firewallMode then
-        self.firewallTimer = self.firewallTimer - dt
-        if self.firewallTimer <= 0 then
-            self.firewallMode = false
-            for _, virus in ipairs(self.viruses) do
-                virus.encrypted = false
+    if newX >= 1 and newX <= self.mazeSize and newY >= 1 and newY <= self.mazeSize then
+        local cell = self.maze[self.player.y][self.player.x]
+        local newCell = self.maze[newY][newX]
+
+        if (dx == 1 and not cell.walls.right) or
+           (dx == -1 and not cell.walls.left) or
+           (dy == 1 and not cell.walls.bottom) or
+           (dy == -1 and not cell.walls.top) then
+
+            self.player.x, self.player.y = newX, newY
+
+            self:createParticles(
+                self.mazeX + (self.player.x - 0.5) * self.cellSize,
+                self.mazeY + (self.player.y - 0.5) * self.cellSize,
+                self.playerColor, 2
+            )
+
+            self:checkBits()
+            self:checkPowerups()
+            self:checkDataPackets()
+            self:checkViruses()
+
+            if self.player.x == self.exit.x and self.player.y == self.exit.y and self.bitsCollected >= self.totalBits then
+                self.gameOver = true
+                self.gameWon = true
+                self.score = self.score + math_floor(1000 / self.elapsedTime)
+                self:createWinParticles()
             end
         end
     end
+end
 
-    -- Move bit runner
-    self:moveBitRunner(dt)
+function Game:usePowerup()
+    if self.powerupActive then
+        self:activatePowerup(self.powerupActive)
+        self.powerupActive = nil
+    end
+end
 
-    -- Move viruses
-    self:moveViruses(dt)
+function Game:activatePowerup(powerup)
+    local effect = powerup.type.effect
+    
+    if effect == "scare" then
+        for _, virus in ipairs(self.viruses) do
+            virus.scared = true
+            virus.color = {0.5, 0.5, 1}
+        end
+        table_insert(self.animations, {
+            type = "powerup",
+            text = "FIREWALL ACTIVATED!",
+            progress = 0,
+            duration = 3
+        })
+    elseif effect == "slow" then
+        for _, virus in ipairs(self.viruses) do
+            virus.speed = virus.speed * 0.5
+        end
+        table_insert(self.animations, {
+            type = "powerup",
+            text = "ENCRYPTION ACTIVE!",
+            progress = 0,
+            duration = 3
+        })
+    elseif effect == "kill" then
+        for i = #self.viruses, 1, -1 do
+            local virus = self.viruses[i]
+            if math_random() < 0.3 then
+                self.score = self.score + 100
+                table_remove(self.viruses, i)
+            end
+        end
+        table_insert(self.animations, {
+            type = "powerup",
+            text = "ANTIVIRUS SCAN!",
+            progress = 0,
+            duration = 3
+        })
+    elseif effect == "speed" then
+        self.invincible = true
+        self.invincibleTimer = powerup.type.duration
+        table_insert(self.animations, {
+            type = "powerup",
+            text = "OVERCLOCKED!",
+            progress = 0,
+            duration = 3
+        })
+    end
+    
+    self.powerupTimer = powerup.type.duration
+end
 
-    -- Check collisions
-    self:checkCollisions()
+function Game:checkBits()
+    for _, bit in ipairs(self.bits) do
+        if not bit.collected and bit.x == self.player.x and bit.y == self.player.y then
+            bit.collected = true
+            self.bitsCollected = self.bitsCollected + 1
+            self.score = self.score + 10
+            self:createParticles(
+                self.mazeX + (bit.x - 0.5) * self.cellSize,
+                self.mazeY + (bit.y - 0.5) * self.cellSize,
+                {1, 1, 0}, 4
+            )
+        end
+    end
+end
 
-    -- Update animations
+function Game:checkPowerups()
+    for _, powerup in ipairs(self.powerups) do
+        if not powerup.collected and powerup.x == self.player.x and powerup.y == self.player.y then
+            powerup.collected = true
+            self.powerupActive = powerup
+            self:createParticles(
+                self.mazeX + (powerup.x - 0.5) * self.cellSize,
+                self.mazeY + (powerup.y - 0.5) * self.cellSize,
+                powerup.color, 8
+            )
+        end
+    end
+end
+
+function Game:checkDataPackets()
+    for _, packet in ipairs(self.dataPackets) do
+        if not packet.collected and packet.x == self.player.x and packet.y == self.player.y then
+            packet.collected = true
+            self.score = self.score + packet.value
+            table_insert(self.animations, {
+                type = "score",
+                text = "+" .. packet.value,
+                x = self.mazeX + (packet.x - 0.5) * self.cellSize,
+                y = self.mazeY + (packet.y - 0.5) * self.cellSize,
+                progress = 0,
+                duration = 2
+            })
+            self:createParticles(
+                self.mazeX + (packet.x - 0.5) * self.cellSize,
+                self.mazeY + (packet.y - 0.5) * self.cellSize,
+                {1, 0.8, 0.2}, 6
+            )
+        end
+    end
+end
+
+function Game:checkViruses()
+    if self.invincible then return end
+
+    for _, virus in ipairs(self.viruses) do
+        if virus.x == self.player.x and virus.y == self.player.y then
+            self.lives = self.lives - 1
+            if self.lives <= 0 then
+                self.gameOver = true
+                self.gameWon = false
+            else
+                self.player = {x = 1, y = 1}
+                self.invincible = true
+                self.invincibleTimer = 2
+            end
+            break
+        end
+    end
+end
+
+function Game:update(dt)
+    self.elapsedTime = love.timer.getTime() - self.startTime
+
     for i = #self.animations, 1, -1 do
         local anim = self.animations[i]
-        anim.timer = anim.timer - dt
-        if anim.timer <= 0 then
+        anim.progress = anim.progress + dt / anim.duration
+        if anim.progress >= 1 then
             table_remove(self.animations, i)
         end
     end
 
-    -- Update particles
     for i = #self.particles, 1, -1 do
         local particle = self.particles[i]
         particle.life = particle.life - dt
         particle.x = particle.x + particle.dx * dt
         particle.y = particle.y + particle.dy * dt
+        particle.rotation = particle.rotation + particle.dr * dt
 
         if particle.life <= 0 then
             table_remove(self.particles, i)
         end
     end
 
-    -- Check win condition
-    if #self.dataBits == 0 and #self.powerCores == 0 then
-        self.gameWon = true
-        self.gameOver = true
-        self:createParticles(self.bitRunner.x, self.bitRunner.y, { 0, 1, 0 }, 20)
-    end
-end
-
-function Game:moveBitRunner(dt)
-    -- Store previous position for collision recovery
-    local prevX, prevY = self.bitRunner.x, self.bitRunner.y
-
-    -- Try to change direction if there's a next direction queued
-    if self.bitRunner.nextDirection ~= self.bitRunner.direction then
-        local canChange = self:canMove(self.bitRunner.x, self.bitRunner.y, self.bitRunner.nextDirection)
-        if canChange then
-            self.bitRunner.direction = self.bitRunner.nextDirection
-        end
-    end
-
-    -- Move in current direction
-    local speed = self.firewallMode and 1.5 or 1.0
-    local moveAmount = speed * dt * 3
-
-    if self.bitRunner.direction == "right" then
-        self.bitRunner.x = self.bitRunner.x + moveAmount
-    elseif self.bitRunner.direction == "left" then
-        self.bitRunner.x = self.bitRunner.x - moveAmount
-    elseif self.bitRunner.direction == "up" then
-        self.bitRunner.y = self.bitRunner.y - moveAmount
-    elseif self.bitRunner.direction == "down" then
-        self.bitRunner.y = self.bitRunner.y + moveAmount
-    end
-
-    -- Check wall collisions and correct position
-    local cellX, cellY = self:getCellCoordinates(self.bitRunner.x, self.bitRunner.y)
-
-    -- If we're in a wall, move back to previous position
-    if cellX >= 1 and cellX <= self.mazeWidth and cellY >= 1 and cellY <= self.mazeHeight then
-        if self.maze[cellX] and self.maze[cellX][cellY] == 1 then
-            self.bitRunner.x, self.bitRunner.y = prevX, prevY
-        end
-    end
-
-    -- Wrap around edges (only through designated tunnels)
-    if cellX < 1 then
-        -- Check if this is a valid tunnel
-        local entranceY = math_floor(self.bitRunner.y + 0.5)
-        if entranceY == 1 and self.maze[1] and self.maze[1][entranceY] == 0 then
-            self.bitRunner.x = self.mazeWidth
-        else
-            self.bitRunner.x = prevX
-        end
-    elseif cellX > self.mazeWidth then
-        local exitY = math_floor(self.bitRunner.y + 0.5)
-        if exitY == self.mazeHeight and self.maze[self.mazeWidth] and self.maze[self.mazeWidth][exitY] == 0 then
-            self.bitRunner.x = 1
-        else
-            self.bitRunner.x = prevX
-        end
-    end
-
-    -- Snap to grid for better collision detection
-    self:snapToGrid()
-end
-
-function Game:moveViruses(dt)
     for _, virus in ipairs(self.viruses) do
-        local speed = virus.speed * (virus.encrypted and 0.7 or 1.0)
-        local moveAmount = speed * dt * 2
-
-        -- Better AI for virus movement
-        if math_random() < 0.05 then -- 5% chance to change direction each frame
-            local directions = {}
-            local possibleDirs = { "right", "left", "up", "down" }
-
-            -- Check which directions are valid
-            for _, dir in ipairs(possibleDirs) do
-                if self:canMove(virus.x, virus.y, dir) then
-                    table_insert(directions, dir)
+        virus.pulse = virus.pulse + dt * 3
+        virus.moveTimer = virus.moveTimer - dt
+        
+        if virus.moveTimer <= 0 then
+            local directions = {{0,-1},{1,0},{0,1},{-1,0}}
+            local dir = directions[math_random(1,4)]
+            local newX, newY = virus.x + dir[1], virus.y + dir[2]
+            
+            if newX >= 1 and newX <= self.mazeSize and newY >= 1 and newY <= self.mazeSize then
+                local cell = self.maze[virus.y][virus.x]
+                if (dir[1] == 1 and not cell.walls.right) or
+                   (dir[1] == -1 and not cell.walls.left) or
+                   (dir[2] == 1 and not cell.walls.bottom) or
+                   (dir[2] == -1 and not cell.walls.top) then
+                    virus.x, virus.y = newX, newY
                 end
             end
-
-            -- Only change direction if there are valid options
-            if #directions > 0 then
-                virus.direction = directions[math_random(1, #directions)]
-            end
-        end
-
-        -- Try to move in current direction
-        local newX, newY = virus.x, virus.y
-        if virus.direction == "right" then
-            newX = newX + moveAmount
-        elseif virus.direction == "left" then
-            newX = newX - moveAmount
-        elseif virus.direction == "up" then
-            newY = newY - moveAmount
-        elseif virus.direction == "down" then
-            newY = newY + moveAmount
-        end
-
-        -- Check if movement is valid
-        local cellX, cellY = self:getCellCoordinates(newX, newY)
-        if cellX >= 1 and cellX <= self.mazeWidth and cellY >= 1 and cellY <= self.mazeHeight and
-            self.maze[cellX] and self.maze[cellX][cellY] == 0 then
-            virus.x, virus.y = newX, newY
-        else
-            -- Hit a wall or boundary, choose a new valid direction
-            local directions = {}
-            local possibleDirs = { "right", "left", "up", "down" }
-
-            for _, dir in ipairs(possibleDirs) do
-                if self:canMove(virus.x, virus.y, dir) then
-                    table_insert(directions, dir)
-                end
-            end
-
-            if #directions > 0 then
-                virus.direction = directions[math_random(1, #directions)]
-            end
-        end
-
-        -- Keep viruses within bounds (no wrapping)
-        virus.x = math.max(1, math.min(self.mazeWidth, virus.x))
-        virus.y = math.max(1, math.min(self.mazeHeight, virus.y))
-    end
-end
-
-function Game:canMove(x, y, direction)
-    local cellX, cellY = self:getCellCoordinates(x, y)
-    local checkX, checkY = cellX, cellY
-
-    if direction == "right" then
-        checkX = checkX + 1
-    elseif direction == "left" then
-        checkX = checkX - 1
-    elseif direction == "up" then
-        checkY = checkY - 1
-    elseif direction == "down" then
-        checkY = checkY + 1
-    end
-
-    -- Boundary check
-    if checkX < 1 or checkX > self.mazeWidth or checkY < 1 or checkY > self.mazeHeight then
-        return false
-    end
-
-    return self.maze[checkX] and self.maze[checkX][checkY] == 0
-end
-
-function Game:snapToGrid()
-    local cellX, cellY = self:getCellCoordinates(self.bitRunner.x, self.bitRunner.y)
-
-    -- Only snap if we're very close to center (allows for direction changes)
-    local centerX, centerY = self:getCellCenter(cellX, cellY)
-    local distX = math_abs(self.bitRunner.x - centerX)
-    local distY = math_abs(self.bitRunner.y - centerY)
-
-    if distX < 0.1 and distY < 0.1 then
-        self.bitRunner.x, self.bitRunner.y = centerX, centerY
-    end
-end
-
-function Game:getCellCoordinates(x, y)
-    return math_floor(x + 0.5), math_floor(y + 0.5)
-end
-
-function Game:getCellCenter(cellX, cellY)
-    return cellX + 0.5, cellY + 0.5
-end
-
-function Game:checkCollisions()
-    local runnerCellX, runnerCellY = self:getCellCoordinates(self.bitRunner.x, self.bitRunner.y)
-
-    -- Check data bit collisions
-    for i = #self.dataBits, 1, -1 do
-        local dataBit = self.dataBits[i]
-        if not dataBit.collected and dataBit.x == runnerCellX and dataBit.y == runnerCellY then
-            dataBit.collected = true
-            self.score = self.score + 10
-            self:createParticles(dataBit.x, dataBit.y, { 1, 1, 1 }, 5)
-            table_remove(self.dataBits, i)
+            
+            virus.moveTimer = 1 / virus.speed
         end
     end
 
-    -- Check power core collisions
-    for i = #self.powerCores, 1, -1 do
-        local powerCore = self.powerCores[i]
-        if not powerCore.collected and powerCore.x == runnerCellX and powerCore.y == runnerCellY then
-            powerCore.collected = true
-            self.score = self.score + 50
-            self.firewallMode = true
-            self.firewallTimer = self.firewallDuration
+    for _, firewall in ipairs(self.firewalls) do
+        firewall.pulse = firewall.pulse + dt * 2
+    end
+
+    for _, packet in ipairs(self.dataPackets) do
+        packet.rotation = packet.rotation + dt * 2
+    end
+
+    if self.invincible then
+        self.invincibleTimer = self.invincibleTimer - dt
+        if self.invincibleTimer <= 0 then
+            self.invincible = false
+        end
+    end
+
+    if self.powerupTimer > 0 then
+        self.powerupTimer = self.powerupTimer - dt
+        if self.powerupTimer <= 0 then
             for _, virus in ipairs(self.viruses) do
-                virus.encrypted = true
-            end
-            self:createParticles(powerCore.x, powerCore.y, { 1, 0.5, 0 }, 10)
-            table_remove(self.powerCores, i)
-        end
-    end
-
-    -- Check special item collisions
-    for i = #self.specialItems, 1, -1 do
-        local item = self.specialItems[i]
-        if not item.collected and item.x == runnerCellX and item.y == runnerCellY then
-            item.collected = true
-            self:applySpecialItem(item)
-            self:createParticles(item.x, item.y, { 0, 1, 1 }, 15)
-            table_remove(self.specialItems, i)
-        end
-    end
-
-    -- Check virus collisions
-    for _, virus in ipairs(self.viruses) do
-        local virusCellX, virusCellY = self:getCellCoordinates(virus.x, virus.y)
-        if virusCellX == runnerCellX and virusCellY == runnerCellY then
-            if virus.encrypted then
-                -- Encrypt virus
-                self.score = self.score + 200
-                virus.encrypted = false
-                -- Respawn virus
-                repeat
-                    virus.x = math_random(5, self.mazeWidth - 4)
-                    virus.y = math_random(5, self.mazeHeight - 4)
-                until self.maze[virus.x] and self.maze[virus.x][virus.y] == 0
-                self:createParticles(virus.x, virus.y, { 1, 1, 0 }, 20)
-            else
-                -- Lose life
-                self.lives = self.lives - 1
-                self:createParticles(self.bitRunner.x, self.bitRunner.y, { 1, 0, 0 }, 15)
-                if self.lives <= 0 then
-                    self.gameOver = true
-                else
-                    -- Reset positions
-                    self.bitRunner.x, self.bitRunner.y = 2, 2
-                    self:placeViruses()
-                end
+                virus.scared = false
+                virus.color = {math_random(0.8, 1), math_random(0.2, 0.4), math_random(0.2, 0.4)}
+                virus.speed = math_random(0.8, 2.5)
             end
         end
-    end
-end
-
-function Game:applySpecialItem(item)
-    if item.type == 1 then
-        -- Speed boost
-        self.bitRunner.processorSpeed = self.bitRunner.processorSpeed * 1.5
-        table_insert(self.animations, {
-            type = "speed",
-            text = "OVERCLOCKED!",
-            timer = 2,
-            x = self.bitRunner.x,
-            y = self.bitRunner.y
-        })
-    elseif item.type == 2 then
-        -- Extra life
-        self.lives = self.lives + 1
-        table_insert(self.animations, {
-            type = "life",
-            text = "SYSTEM BOOT!",
-            timer = 2,
-            x = self.bitRunner.x,
-            y = self.bitRunner.y
-        })
-    elseif item.type == 3 then
-        -- Score multiplier
-        self.score = self.score * 2
-        table_insert(self.animations, {
-            type = "score",
-            text = "DATA BONUS!",
-            timer = 2,
-            x = self.bitRunner.x,
-            y = self.bitRunner.y
-        })
     end
 end
 
 function Game:createParticles(x, y, color, count)
-    for _ = 1, count or 8 do
+    for _ = 1, count or 6 do
         table_insert(self.particles, {
             x = x,
             y = y,
-            dx = (math_random() - 0.5) * 3,
-            dy = (math_random() - 0.5) * 3,
-            life = math_random(0.5, 1.5),
+            dx = (math_random() - 0.5) * 60,
+            dy = (math_random() - 0.5) * 60,
+            dr = (math_random() - 0.5) * 6,
+            life = math_random(0.8, 1.5),
             color = color,
-            size = math_random(1, 3)
+            size = math_random(2, 6),
+            rotation = math_random() * math_pi * 2
         })
     end
 end
 
-function Game:handleKeyPress(key)
-    if key == "r" then
-        self:resetGame()
-    elseif key == "right" then
-        self.bitRunner.nextDirection = "right"
-    elseif key == "left" then
-        self.bitRunner.nextDirection = "left"
-    elseif key == "up" then
-        self.bitRunner.nextDirection = "up"
-    elseif key == "down" then
-        self.bitRunner.nextDirection = "down"
+function Game:createWinParticles()
+    for i = 1, 20 do
+        local x = self.mazeX + (self.exit.x - 0.5) * self.cellSize
+        local y = self.mazeY + (self.exit.y - 0.5) * self.cellSize
+        self:createParticles(x, y, {0.2, 1, 0.2}, 1)
     end
 end
 
 function Game:draw()
     self:drawMaze()
-    self:drawDataBits()
-    self:drawPowerCores()
-    self:drawSpecialItems()
+    self:drawBits()
+    self:drawPowerups()
+    self:drawDataPackets()
+    self:drawFirewalls()
     self:drawViruses()
-    self:drawBitRunner()
+    self:drawPlayer()
+    self:drawExit()
     self:drawUI()
     self:drawParticles()
     self:drawAnimations()
@@ -617,245 +559,268 @@ function Game:draw()
 end
 
 function Game:drawMaze()
-    -- Draw maze background
-    love.graphics.setColor(0.05, 0.05, 0.15, 0.9)
-    love.graphics.rectangle("fill", self.boardX - 10, self.boardY - 10,
-        self.cellSize * self.mazeWidth + 20,
-        self.cellSize * self.mazeHeight + 20, 5)
+    love.graphics.setColor(0.05, 0.08, 0.15, 0.9)
+    love.graphics.rectangle("fill", self.mazeX - 15, self.mazeY - 15,
+        self.cellSize * self.mazeSize + 30,
+        self.cellSize * self.mazeSize + 30, 8)
 
-    -- Draw circuit walls
-    love.graphics.setColor(0.2, 0.3, 0.8)
-    for x = 1, self.mazeWidth do
-        for y = 1, self.mazeHeight do
-            if self.maze[x][y] == 1 then
-                local screenX = self.boardX + (x - 1) * self.cellSize
-                local screenY = self.boardY + (y - 1) * self.cellSize
-                love.graphics.rectangle("fill", screenX, screenY, self.cellSize, self.cellSize)
+    local pulse = (math.sin(self.elapsedTime * 2) + 1) * 0.25 + 0.75
 
-                -- Add circuit pattern to walls
-                love.graphics.setColor(0.3, 0.4, 0.9)
-                love.graphics.rectangle("line", screenX + 2, screenY + 2, self.cellSize - 4, self.cellSize - 4)
+    for y = 1, self.mazeSize do
+        for x = 1, self.mazeSize do
+            local cell = self.maze[y][x]
+            local cellX = self.mazeX + (x - 1) * self.cellSize
+            local cellY = self.mazeY + (y - 1) * self.cellSize
+
+            if cell.path then
+                love.graphics.setColor(self.pathColor[1], self.pathColor[2], self.pathColor[3], 0.3)
+                love.graphics.rectangle("fill", cellX, cellY, self.cellSize, self.cellSize)
             end
+
+            love.graphics.setColor(
+                self.wallColor[1] * 0.3,
+                self.wallColor[2] * 0.3,
+                self.wallColor[3] * 0.3,
+                1
+            )
+            love.graphics.setLineWidth(6)
+
+            if cell.walls.top then
+                love.graphics.line(cellX, cellY, cellX + self.cellSize, cellY)
+            end
+            if cell.walls.right then
+                love.graphics.line(cellX + self.cellSize, cellY, cellX + self.cellSize, cellY + self.cellSize)
+            end
+            if cell.walls.bottom then
+                love.graphics.line(cellX, cellY + self.cellSize, cellX + self.cellSize, cellY + self.cellSize)
+            end
+            if cell.walls.left then
+                love.graphics.line(cellX, cellY, cellX, cellY + self.cellSize)
+            end
+
+            love.graphics.setColor(
+                self.wallColor[1] * pulse,
+                self.wallColor[2] * pulse,
+                self.wallColor[3] * pulse,
+                1
+            )
+            love.graphics.setLineWidth(3)
+
+            if cell.walls.top then
+                love.graphics.line(cellX, cellY, cellX + self.cellSize, cellY)
+            end
+            if cell.walls.right then
+                love.graphics.line(cellX + self.cellSize, cellY, cellX + self.cellSize, cellY + self.cellSize)
+            end
+            if cell.walls.bottom then
+                love.graphics.line(cellX, cellY + self.cellSize, cellX + self.cellSize, cellY + self.cellSize)
+            end
+            if cell.walls.left then
+                love.graphics.line(cellX, cellY, cellX, cellY + self.cellSize)
+            end
+
+            love.graphics.setLineWidth(1)
         end
     end
 end
 
-function Game:drawDataBits()
-    love.graphics.setColor(0.2, 0.8, 1) -- Cyan for data bits
+function Game:drawPlayer()
+    local x = self.mazeX + (self.player.x - 0.5) * self.cellSize
+    local y = self.mazeY + (self.player.y - 0.5) * self.cellSize
 
-    local bitFont = love.graphics.newFont(self.cellSize * 0.15)
-    love.graphics.setFont(bitFont)
+    local pulse = (math_sin(self.elapsedTime * 5) + 1) * 0.2
+    local alpha = 0.4 + pulse
+    if self.invincible then
+        local flash = math_floor(self.elapsedTime * 10) % 2
+        alpha = flash == 0 and 0.8 or 0.3
+    end
 
-    for _, dataBit in ipairs(self.dataBits) do
-        if not dataBit.collected then
-            local screenX = self.boardX + (dataBit.x - 0.5) * self.cellSize
-            local screenY = self.boardY + (dataBit.y - 0.5) * self.cellSize
-            love.graphics.circle("fill", screenX, screenY, self.cellSize * 0.1)
+    love.graphics.setColor(self.playerColor[1], self.playerColor[2], self.playerColor[3], alpha)
+    love.graphics.circle("fill", x, y, self.cellSize * 0.3)
 
-            -- Add binary digit inside
-            love.graphics.setColor(1, 1, 1)
-            love.graphics.printf(math_random(0, 1), screenX - self.cellSize * 0.1, screenY - self.cellSize * 0.07,
-                self.cellSize * 0.2, "center")
-            love.graphics.setColor(0.2, 0.8, 1) -- Reset color
+    love.graphics.setColor(1, 1, 1, 0.9)
+    love.graphics.circle("fill", x, y, self.cellSize * 0.15)
+end
+
+function Game:drawExit()
+    local x = self.mazeX + (self.exit.x - 0.5) * self.cellSize
+    local y = self.mazeY + (self.exit.y - 0.5) * self.cellSize
+
+    local pulse = (math_sin(self.elapsedTime * 3) + 1) * 0.3
+    if self.bitsCollected >= self.totalBits then
+        love.graphics.setColor(0.2, 1, 0.2, 0.6 + pulse)
+    else
+        love.graphics.setColor(0.5, 0.5, 0.5, 0.3)
+    end
+    love.graphics.circle("fill", x, y, self.cellSize * 0.3)
+
+    love.graphics.setColor(1, 1, 1, 0.9)
+    love.graphics.circle("line", x, y, self.cellSize * 0.3)
+    love.graphics.circle("line", x, y, self.cellSize * 0.2)
+end
+
+function Game:drawBits()
+    for _, bit in ipairs(self.bits) do
+        if not bit.collected then
+            local x = self.mazeX + (bit.x - 0.5) * self.cellSize
+            local y = self.mazeY + (bit.y - 0.5) * self.cellSize
+
+            local pulse = (math_sin(self.elapsedTime * 4) + 1) * 0.2
+            love.graphics.setColor(1, 1, 0, 0.8 + pulse)
+            love.graphics.circle("fill", x, y, self.cellSize * 0.08)
         end
     end
 end
 
-function Game:drawPowerCores()
-    for _, powerCore in ipairs(self.powerCores) do
-        if not powerCore.collected then
-            local screenX = self.boardX + (powerCore.x - 0.5) * self.cellSize
-            local screenY = self.boardY + (powerCore.y - 0.5) * self.cellSize
+function Game:drawPowerups()
+    for _, powerup in ipairs(self.powerups) do
+        if not powerup.collected then
+            local x = self.mazeX + (powerup.x - 0.5) * self.cellSize
+            local y = self.mazeY + (powerup.y - 0.5) * self.cellSize
 
-            -- Pulsing effect
-            local pulse = (math_sin(love.timer.getTime() * 8) + 1) * 0.2
+            local pulse = (math_sin(self.elapsedTime * 5) + 1) * 0.25
+            love.graphics.setColor(powerup.color[1], powerup.color[2], powerup.color[3], 0.8 + pulse)
+            love.graphics.circle("fill", x, y, self.cellSize * 0.15)
 
-            love.graphics.setColor(1, 0.8, 0.2, 0.8 + pulse)
-            love.graphics.circle("fill", screenX, screenY, self.cellSize * 0.2)
-
-            -- Inner core
-            love.graphics.setColor(1, 1, 0.8, 0.9)
-            love.graphics.circle("fill", screenX, screenY, self.cellSize * 0.1)
-
-            -- Circuit pattern
-            love.graphics.setColor(0.8, 0.6, 0.1, 0.6)
-            for i = 0, 3 do
-                local angle = i * math.pi / 2
-                love.graphics.line(
-                    screenX, screenY,
-                    screenX + math.cos(angle) * self.cellSize * 0.15,
-                    screenY + math.sin(angle) * self.cellSize * 0.15
-                )
-            end
+            love.graphics.setColor(1, 1, 1, 0.9)
+            love.graphics.circle("line", x, y, self.cellSize * 0.15)
         end
     end
 end
 
-function Game:drawSpecialItems()
-    for _, item in ipairs(self.specialItems) do
-        if not item.collected then
-            local screenX = self.boardX + (item.x - 0.5) * self.cellSize
-            local screenY = self.boardY + (item.y - 0.5) * self.cellSize
+function Game:drawDataPackets()
+    for _, packet in ipairs(self.dataPackets) do
+        if not packet.collected then
+            local x = self.mazeX + (packet.x - 0.5) * self.cellSize
+            local y = self.mazeY + (packet.y - 0.5) * self.cellSize
 
-            if item.type == 1 then
-                love.graphics.setColor(0, 1, 0) -- Green - Speed (Overclock)
-                love.graphics.rectangle("fill", screenX - self.cellSize * 0.15, screenY - self.cellSize * 0.15,
-                    self.cellSize * 0.3, self.cellSize * 0.3)
-            elseif item.type == 2 then
-                love.graphics.setColor(1, 1, 1) -- White - Life (System Boot)
-                love.graphics.polygon("fill",
-                    screenX, screenY - self.cellSize * 0.2,
-                    screenX + self.cellSize * 0.15, screenY + self.cellSize * 0.15,
-                    screenX - self.cellSize * 0.15, screenY + self.cellSize * 0.15
-                )
-            elseif item.type == 3 then
-                love.graphics.setColor(1, 0, 1) -- Magenta - Score (Data Bonus)
-                love.graphics.circle("fill", screenX, screenY, self.cellSize * 0.15)
-            end
+            love.graphics.push()
+            love.graphics.translate(x, y)
+            love.graphics.rotate(packet.rotation)
+
+            love.graphics.setColor(1, 0.8, 0.2, 0.8)
+            love.graphics.rectangle("fill", -self.cellSize * 0.1, -self.cellSize * 0.15, 
+                self.cellSize * 0.2, self.cellSize * 0.3, 2)
+
+            love.graphics.setColor(1, 1, 1, 0.9)
+            love.graphics.rectangle("line", -self.cellSize * 0.1, -self.cellSize * 0.15, 
+                self.cellSize * 0.2, self.cellSize * 0.3, 2)
+
+            love.graphics.pop()
+        end
+    end
+end
+
+function Game:drawFirewalls()
+    for _, firewall in ipairs(self.firewalls) do
+        if firewall.active then
+            local x = self.mazeX + (firewall.x - 0.5) * self.cellSize
+            local y = self.mazeY + (firewall.y - 0.5) * self.cellSize
+
+            local pulse = (math_sin(firewall.pulse) + 1) * 0.3
+            love.graphics.setColor(1, 0.3, 0.2, 0.6 + pulse)
+            love.graphics.rectangle("fill", x - self.cellSize * 0.3, y - self.cellSize * 0.3, 
+                self.cellSize * 0.6, self.cellSize * 0.6, 3)
         end
     end
 end
 
 function Game:drawViruses()
-    -- Pre-create virus font once
-    local virusFont = love.graphics.newFont(self.cellSize * 0.14)
-    love.graphics.setFont(virusFont)
-
     for _, virus in ipairs(self.viruses) do
-        local screenX = self.boardX + (virus.x - 0.5) * self.cellSize
-        local screenY = self.boardY + (virus.y - 0.5) * self.cellSize
+        local x = self.mazeX + (virus.x - 0.5) * self.cellSize
+        local y = self.mazeY + (virus.y - 0.5) * self.cellSize
 
-        if virus.encrypted then
-            love.graphics.setColor(0.2, 0.2, 1) -- Blue when encrypted
+        local pulse = (math_sin(virus.pulse) + 1) * 0.3
+        local size = self.cellSize * 0.25 * virus.size
+
+        if virus.scared then
+            love.graphics.setColor(0.5, 0.5, 1, 0.8 + pulse)
         else
-            love.graphics.setColor(virus.color[1], virus.color[2], virus.color[3])
+            love.graphics.setColor(virus.color[1], virus.color[2], virus.color[3], 0.8 + pulse)
         end
 
-        -- Draw virus body as spiky circle
-        love.graphics.circle("fill", screenX, screenY, virus.size)
+        love.graphics.push()
+        love.graphics.translate(x, y)
 
-        -- Draw virus spikes
-        local spikeLength = virus.size * 1.2
-        for i = 1, virus.spikes + 3 do
-            local angle = i * (2 * math_pi / (virus.spikes + 3))
-            love.graphics.line(
-                screenX, screenY,
-                screenX + math_cos(angle) * spikeLength,
-                screenY + math_sin(angle) * spikeLength
-            )
-        end
+        love.graphics.circle("fill", 0, 0, size)
+        
+        love.graphics.setColor(1, 1, 1, 0.9)
+        love.graphics.circle("fill", -size * 0.3, -size * 0.2, size * 0.15)
+        love.graphics.circle("fill", size * 0.3, -size * 0.2, size * 0.15)
+        love.graphics.setColor(0, 0, 0, 1)
+        love.graphics.circle("fill", -size * 0.3, -size * 0.2, size * 0.07)
+        love.graphics.circle("fill", size * 0.3, -size * 0.2, size * 0.07)
 
-        -- Draw virus "eyes" as binary
-        love.graphics.setColor(1, 1, 1)
-        love.graphics.printf("10", screenX - virus.size * 0.3, screenY - virus.size * 0.2, virus.size * 0.6, "center")
+        love.graphics.pop()
     end
-end
-
-function Game:drawBitRunner()
-    local screenX = self.boardX + (self.bitRunner.x - 0.5) * self.cellSize
-    local screenY = self.boardY + (self.bitRunner.y - 0.5) * self.cellSize
-
-    love.graphics.setColor(1, 1, 0) -- Yellow for bit runner
-
-    -- Draw the bit runner as a circle with a processor opening
-    local processorOpenAngle = math_pi / 4 -- 45 degrees open
-    local startAngle, endAngle
-
-    if self.bitRunner.direction == "right" then
-        startAngle = processorOpenAngle
-        endAngle = 2 * math_pi - processorOpenAngle
-    elseif self.bitRunner.direction == "left" then
-        startAngle = math_pi + processorOpenAngle
-        endAngle = math_pi - processorOpenAngle
-    elseif self.bitRunner.direction == "up" then
-        startAngle = math_pi * 1.5 + processorOpenAngle
-        endAngle = math_pi * 1.5 - processorOpenAngle
-    else -- down
-        startAngle = math_pi * 0.5 + processorOpenAngle
-        endAngle = math_pi * 0.5 - processorOpenAngle
-    end
-
-    -- Ensure we're drawing in the correct direction
-    if startAngle > endAngle then
-        startAngle, endAngle = endAngle, startAngle
-    end
-
-    -- Draw the bit runner body
-    love.graphics.arc("fill", screenX, screenY, self.bitRunner.size, startAngle, endAngle)
-
-    -- Display current binary value in the center
-    love.graphics.setColor(0, 0, 0)
-
-    -- Use pre-created font
-    local runnerFont = love.graphics.newFont(self.bitRunner.size * 0.6)
-    love.graphics.setFont(runnerFont)
-
-    love.graphics.printf(tostring(self.bitRunner.value),
-        screenX - self.bitRunner.size * 0.3,
-        screenY - self.bitRunner.size * 0.3,
-        self.bitRunner.size * 0.6, "center")
 end
 
 function Game:drawUI()
-    -- Use pre-created fonts
-    love.graphics.setFont(self.fonts.medium)
+    local font = love.graphics.newFont(16)
+    love.graphics.setFont(font)
 
-    -- Score
-    love.graphics.setColor(1, 0.8, 0.2)
-    love.graphics.print("Data: " .. self.score, 20, 20)
+    local texts = {
+        "BitsAndBytes - " .. self.theme:upper() .. " Theme",
+        "Difficulty: " .. self.difficulty,
+        "Time: " .. math_floor(self.elapsedTime) .. "s",
+        "Score: " .. self.score,
+        "Bits: " .. self.bitsCollected .. "/" .. self.totalBits,
+        "Lives: " .. self.lives,
+        "Powerup: " .. (self.powerupActive and self.powerupActive.type.name or "None")
+    }
 
-    -- Lives (now "Systems")
-    love.graphics.setColor(1, 0.4, 0.4)
-    love.graphics.print("Systems: " .. self.lives, 20, 50)
-
-    -- Level
-    love.graphics.setColor(0.4, 0.8, 1)
-    love.graphics.print("Network: " .. self.level, 20, 80)
-
-    -- Firewall mode indicator
-    if self.firewallMode then
-        love.graphics.setColor(0.2, 0.8, 1)
-        love.graphics.print("FIREWALL: " .. math_floor(self.firewallTimer * 10) / 10 .. "s", 20, 110)
+    local maxWidth = 0
+    for _, t in ipairs(texts) do
+        local w = font:getWidth(t)
+        if w > maxWidth then maxWidth = w end
     end
+    local boxWidth = maxWidth + 40
+    local boxHeight = #texts * 25 + 20
 
-    -- Game mode and difficulty
-    love.graphics.setColor(1, 1, 1, 0.7)
-    love.graphics.setFont(self.fonts.small)
-    love.graphics.print("Protocol: " .. self.gameMode, 20, 140)
-    love.graphics.print("Security: " .. self.difficulty, 20, 160)
+    love.graphics.setColor(0.1, 0.15, 0.25, 0.3)
+    love.graphics.rectangle("fill", 20, 20, boxWidth, boxHeight, 5)
 
-    -- Controls
-    love.graphics.print("Arrow Keys: Navigate", 20, self.screenHeight - 90)
-    love.graphics.print("R: Reset System", 20, self.screenHeight - 70)
-    love.graphics.print("ESC: Main Menu", 20, self.screenHeight - 50)
+    love.graphics.setColor(1, 1, 1)
+    for i, t in ipairs(texts) do
+        love.graphics.print(t, 35, 35 + (i - 1) * 25)
+    end
 end
 
 function Game:drawParticles()
     for _, particle in ipairs(self.particles) do
-        local alpha = math_min(1, particle.life * 2)
+        local alpha = math_min(1, particle.life * 1.5)
         love.graphics.setColor(particle.color[1], particle.color[2], particle.color[3], alpha)
-        love.graphics.circle("fill",
-            self.boardX + (particle.x - 0.5) * self.cellSize,
-            self.boardY + (particle.y - 0.5) * self.cellSize,
-            particle.size
-        )
+        love.graphics.push()
+        love.graphics.translate(particle.x, particle.y)
+        love.graphics.rotate(particle.rotation)
+        love.graphics.circle("fill", 0, 0, particle.size)
+        love.graphics.pop()
     end
 end
 
 function Game:drawAnimations()
     for _, anim in ipairs(self.animations) do
-        local screenX = self.boardX + (anim.x - 0.5) * self.cellSize
-        local screenY = self.boardY + (anim.y - 0.5) * self.cellSize - anim.timer * 20
+        if anim.type == "powerup" then
+            local alpha = math_min(1, (1 - math_abs(anim.progress - 0.5) * 2) * 2)
+            love.graphics.setColor(0, 0, 0, 0.7 * alpha)
+            love.graphics.rectangle("fill", 0, self.screenHeight / 2 - 40, self.screenWidth, 80)
 
-        love.graphics.setColor(1, 1, 1)
-        love.graphics.setFont(love.graphics.newFont(14))
-        love.graphics.print(anim.text, screenX - 30, screenY)
+            love.graphics.setColor(0.8, 0.2, 1, alpha)
+            love.graphics.setFont(love.graphics.newFont(20))
+            love.graphics.printf(anim.text, 50, self.screenHeight / 2 - 20, self.screenWidth - 100, "center")
+        elseif anim.type == "score" then
+            local progress = anim.progress
+            local y = anim.y - progress * 50
+            local alpha = 1 - progress
+            love.graphics.setColor(1, 0.8, 0.2, alpha)
+            love.graphics.setFont(love.graphics.newFont(18))
+            love.graphics.print(anim.text, anim.x, y)
+        end
     end
 end
 
 function Game:drawGameOver()
-    -- Semi-transparent overlay
-    love.graphics.setColor(0, 0, 0, 0.7)
+    love.graphics.setColor(0, 0, 0, 0.8)
     love.graphics.rectangle("fill", 0, 0, self.screenWidth, self.screenHeight)
 
     local font = love.graphics.newFont(48)
@@ -863,21 +828,21 @@ function Game:drawGameOver()
 
     if self.gameWon then
         love.graphics.setColor(0.2, 1, 0.2)
-        love.graphics.printf("SYSTEM SECURE!", 0, self.screenHeight / 2 - 80, self.screenWidth, "center")
+        love.graphics.printf("SYSTEM SECURED!", 0, self.screenHeight / 2 - 100, self.screenWidth, "center")
+
         love.graphics.setFont(love.graphics.newFont(24))
         love.graphics.setColor(1, 1, 1)
-        love.graphics.printf("Data Processed: " .. self.score, 0, self.screenHeight / 2 - 20, self.screenWidth, "center")
+        love.graphics.printf("Final Score: " .. self.score, 0, self.screenHeight / 2 - 40, self.screenWidth, "center")
+        love.graphics.printf("Time: " .. math_floor(self.elapsedTime) .. " seconds", 0, self.screenHeight / 2 - 10, self.screenWidth, "center")
+        love.graphics.printf("Bits Collected: " .. self.bitsCollected .. "/" .. self.totalBits, 0, self.screenHeight / 2 + 20, self.screenWidth, "center")
     else
         love.graphics.setColor(1, 0.4, 0.4)
-        love.graphics.printf("SYSTEM FAILURE", 0, self.screenHeight / 2 - 80, self.screenWidth, "center")
-        love.graphics.setFont(love.graphics.newFont(24))
-        love.graphics.setColor(1, 1, 1)
-        love.graphics.printf("Data Lost: " .. self.score, 0, self.screenHeight / 2 - 20, self.screenWidth, "center")
+        love.graphics.printf("SYSTEM INFECTED", 0, self.screenHeight / 2 - 80, self.screenWidth, "center")
     end
 
     love.graphics.setFont(love.graphics.newFont(20))
     love.graphics.setColor(1, 1, 1)
-    love.graphics.printf("Click to return to main menu", 0, self.screenHeight / 2 + 20, self.screenWidth, "center")
+    love.graphics.printf("Click anywhere to continue", 0, self.screenHeight / 2 + 80, self.screenWidth, "center")
 end
 
 function Game:isGameOver()

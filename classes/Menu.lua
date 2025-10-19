@@ -1,44 +1,33 @@
--- BitsAndBytes - Computer Themed Game
--- License: MIT
--- Copyright (c) 2025 Jericho Crosby (Chalwk)
-
 local ipairs = ipairs
 local math_sin = math.sin
 
 local helpText = {
-    "BitsAndBytes - Navigate the Digital Realm!",
+    "Welcome to BitsAndBytes - The Digital Maze!",
     "",
-    "How to Play:",
-    "• Arrow Keys to move your Bit Runner",
-    "• Collect all Data Bits to secure the system",
-    "• Power Cores activate Firewall mode",
-    "• Firewall lets you encrypt Viruses",
-    "• Avoid Viruses when firewall is down",
-    "• Collect special upgrades for bonuses",
+    "Game Features:",
+    "• Collect bits (yellow dots) to score points",
+    "• Avoid viruses (red creatures) that roam the maze",
+    "• Use power-ups to gain temporary advantages",
+    "• Collect data packets for bonus points",
+    "• Avoid firewalls (red squares) that block your path",
+    "• Find the exit portal after collecting all bits",
     "",
-    "System Elements:",
-    "• Cyan Circles: Data Bits (+10)",
-    "• Orange Pulsing: Power Cores (+50)",
-    "• Spiky Circles: Malicious Viruses",
-    "• Yellow Pac: Your Bit Runner",
+    "Power-ups:",
+    "• Firewall: Scares viruses away temporarily",
+    "• Encryption: Slows down all viruses",
+    "• Antivirus: Destroys some viruses instantly",
+    "• Overclock: Makes you invincible and faster",
     "",
-    "Special Upgrades:",
-    "• Green Square: Overclock (Speed Boost)",
-    "• White Triangle: System Boot (Extra Life)",
-    "• Magenta Circle: Data Bonus (Double Score)",
-    "",
-    "Game Protocols:",
-    "• Classic: Traditional gameplay",
-    "• Timed: Race against the clock",
-    "• Survival: How long can you last?",
-    "",
-    "Security Levels:",
-    "• Easy: Smaller network, fewer viruses",
-    "• Normal: Balanced challenge",
-    "• Hard: Larger network, faster viruses",
+    "Themes:",
+    "• Retro: Orange/yellow classic computer theme",
+    "• Cyber: Blue/cyan futuristic cyber theme",
+    "• Matrix: Green monochrome matrix theme",
     "",
     "Controls:",
-    "• R: Reset system",
+    "• WASD or Arrow Keys: Move through the maze",
+    "• Space: Activate collected power-up",
+    "• F: Toggle invincibility (debug)",
+    "• R: Reset the current maze",
     "• ESC: Return to main menu",
     "",
     "Click anywhere to close"
@@ -50,26 +39,29 @@ Menu.__index = Menu
 function Menu.new()
     local instance = setmetatable({}, Menu)
 
-    instance.screenWidth = 800
-    instance.screenHeight = 600
-    instance.difficulty = "normal"
-    instance.gameMode = "classic"
+    instance.screenWidth = 1000
+    instance.screenHeight = 700
+    instance.difficulty = "medium"
+    instance.theme = "retro"
     instance.title = {
-        text = "BitsAndBytes",
+        text = "BITSANDBYTES",
+        subtitle = "The Digital Maze",
         scale = 1,
         scaleDirection = 1,
-        scaleSpeed = 0.3,
-        minScale = 0.95,
-        maxScale = 1.05,
+        scaleSpeed = 0.2,
+        minScale = 0.98,
+        maxScale = 1.02,
         rotation = 0,
-        rotationSpeed = 0.2
+        rotationSpeed = 0.1,
+        pulse = 0
     }
     instance.showHelp = false
 
     instance.smallFont = love.graphics.newFont(16)
-    instance.mediumFont = love.graphics.newFont(22)
-    instance.largeFont = love.graphics.newFont(42)
-    instance.sectionFont = love.graphics.newFont(18)
+    instance.mediumFont = love.graphics.newFont(24)
+    instance.largeFont = love.graphics.newFont(52)
+    instance.subtitleFont = love.graphics.newFont(28)
+    instance.sectionFont = love.graphics.newFont(20)
 
     instance:createMenuButtons()
     instance:createOptionsButtons()
@@ -87,39 +79,42 @@ end
 function Menu:createMenuButtons()
     self.menuButtons = {
         {
-            text = "Boot System",
+            text = "Start Game",
             action = "start",
-            width = 200,
-            height = 45,
+            width = 240,
+            height = 50,
             x = 0,
-            y = 0
+            y = 0,
+            color = { 0.2, 0.7, 0.9 }
         },
         {
-            text = "Configuration",
+            text = "Options",
             action = "options",
-            width = 200,
-            height = 45,
+            width = 240,
+            height = 50,
             x = 0,
-            y = 0
+            y = 0,
+            color = { 0.7, 0.5, 0.9 }
         },
         {
-            text = "Shutdown",
+            text = "Quit",
             action = "quit",
-            width = 200,
-            height = 45,
+            width = 240,
+            height = 50,
             x = 0,
-            y = 0
+            y = 0,
+            color = { 0.9, 0.3, 0.4 }
         }
     }
 
-    -- Help button (question mark)
     self.helpButton = {
         text = "?",
         action = "help",
-        width = 40,
-        height = 40,
+        width = 45,
+        height = 45,
         x = 30,
-        y = self.screenHeight - 50
+        y = self.screenHeight - 55,
+        color = { 0.3, 0.6, 0.9 }
     }
 
     self:updateButtonPositions()
@@ -127,122 +122,143 @@ end
 
 function Menu:createOptionsButtons()
     self.optionsButtons = {
-        -- Security Section
         {
-            text = "Basic",
+            text = "Easy",
             action = "difficulty easy",
-            width = 120,
-            height = 35,
+            width = 140,
+            height = 40,
             x = 0,
             y = 0,
-            section = "difficulty"
+            section = "difficulty",
+            color = { 0.3, 0.8, 0.4 }
         },
         {
-            text = "Standard",
-            action = "difficulty normal",
-            width = 120,
-            height = 35,
+            text = "Medium",
+            action = "difficulty medium",
+            width = 140,
+            height = 40,
             x = 0,
             y = 0,
-            section = "difficulty"
+            section = "difficulty",
+            color = { 0.8, 0.7, 0.2 }
         },
         {
-            text = "Advanced",
+            text = "Hard",
             action = "difficulty hard",
-            width = 120,
-            height = 35,
+            width = 140,
+            height = 40,
             x = 0,
             y = 0,
-            section = "difficulty"
+            section = "difficulty",
+            color = { 0.8, 0.3, 0.3 }
         },
 
-        -- Protocol Section
         {
-            text = "Classic",
-            action = "gameMode classic",
-            width = 140,
-            height = 35,
-            x = 0,
-            y = 0,
-            section = "gameMode"
-        },
-        {
-            text = "Timed",
-            action = "gameMode timed",
-            width = 140,
-            height = 35,
-            x = 0,
-            y = 0,
-            section = "gameMode"
-        },
-        {
-            text = "Survival",
-            action = "gameMode survival",
-            width = 140,
-            height = 35,
-            x = 0,
-            y = 0,
-            section = "gameMode"
-        },
-
-        -- Navigation
-        {
-            text = "Back to Main",
-            action = "back",
+            text = "Retro",
+            action = "theme retro",
             width = 160,
             height = 40,
             x = 0,
             y = 0,
-            section = "navigation"
+            section = "theme",
+            color = { 1, 0.5, 0 }
+        },
+        {
+            text = "Cyber",
+            action = "theme cyber",
+            width = 160,
+            height = 40,
+            x = 0,
+            y = 0,
+            section = "theme",
+            color = { 0, 1, 1 }
+        },
+        {
+            text = "Matrix",
+            action = "theme matrix",
+            width = 160,
+            height = 40,
+            x = 0,
+            y = 0,
+            section = "theme",
+            color = { 0, 1, 0 }
+        },
+
+        {
+            text = "Hold-to-Move: OFF",
+            action = "toggle hold",
+            width = 200,
+            height = 45,
+            x = 0,
+            y = 0,
+            section = "navigation",
+            color = { 0.4, 0.7, 0.9 }
+        },
+        {
+            text = "Back to Menu",
+            action = "back",
+            width = 180,
+            height = 45,
+            x = 0,
+            y = 0,
+            section = "navigation",
+            color = { 0.6, 0.5, 0.8 }
         }
     }
     self:updateOptionsButtonPositions()
 end
 
 function Menu:updateButtonPositions()
-    local startY = self.screenHeight / 2
+    local startY = self.screenHeight / 2 + 20
     for i, button in ipairs(self.menuButtons) do
         button.x = (self.screenWidth - button.width) / 2
-        button.y = startY + (i - 1) * 60
+        button.y = startY + (i - 1) * 70
     end
 
-    -- Update help button position
-    self.helpButton.y = self.screenHeight - 50
+    self.helpButton.y = self.screenHeight - 55
+end
+
+function Menu:updateHoldToMoveButton(state)
+    for _, button in ipairs(self.optionsButtons) do
+        if button.action == "toggle hold" then
+            button.text = "Hold-to-Move: " .. (state and "ON" or "OFF")
+        end
+    end
 end
 
 function Menu:updateOptionsButtonPositions()
     local centerX = self.screenWidth / 2
-    local totalSectionsHeight = 240
-    local startY = (self.screenHeight - totalSectionsHeight) / 2
+    local totalSectionsHeight = 320
+    local startY = (self.screenHeight - totalSectionsHeight) / 2 + 40
 
-    -- Security buttons
-    local securityButtonW, securityButtonH, securitySpacing = 120, 35, 15
-    local securityTotalW = 3 * securityButtonW + 2 * securitySpacing
-    local securityStartX = centerX - securityTotalW / 2
-    local securityY = startY + 40
+    local diffButtonW, diffButtonH, diffSpacing = 140, 40, 15
+    local diffTotalW = 3 * diffButtonW + 2 * diffSpacing
+    local diffStartX = centerX - diffTotalW / 2
+    local diffY = startY + 50
 
-    -- Protocol buttons
-    local protocolButtonW, protocolButtonH, protocolSpacing = 140, 35, 10
-    local protocolTotalW = 3 * protocolButtonW + 2 * protocolSpacing
-    local protocolStartX = centerX - protocolTotalW / 2
-    local protocolY = startY + 120
+    local themeButtonW, themeButtonH, themeSpacing = 160, 40, 12
+    local themeTotalW = 3 * themeButtonW + 2 * themeSpacing
+    local themeStartX = centerX - themeTotalW / 2
+    local themeY = startY + 130
 
-    -- Navigation
-    local navY = startY + 200
+    local navY = startY + 210
+    local navSpacing = 55
+    local navIndex = 0
 
-    local securityIndex, protocolIndex = 0, 0
+    local diffIndex, themeIndex = 0, 0
     for _, button in ipairs(self.optionsButtons) do
         if button.section == "difficulty" then
-            button.x = securityStartX + securityIndex * (securityButtonW + securitySpacing)
-            button.y = securityY
-            securityIndex = securityIndex + 1
-        elseif button.section == "gameMode" then
-            button.x = protocolStartX + protocolIndex * (protocolButtonW + protocolSpacing)
-            button.y = protocolY
-            protocolIndex = protocolIndex + 1
+            button.x = diffStartX + diffIndex * (diffButtonW + diffSpacing)
+            button.y = diffY
+            diffIndex = diffIndex + 1
+        elseif button.section == "theme" then
+            button.x = themeStartX + themeIndex * (themeButtonW + themeSpacing)
+            button.y = themeY
+            themeIndex = themeIndex + 1
         elseif button.section == "navigation" then
             button.x = centerX - button.width / 2
-            button.y = navY
+            button.y = navY + navIndex * navSpacing
+            navIndex = navIndex + 1
         end
     end
 end
@@ -255,8 +271,8 @@ function Menu:update(dt, screenWidth, screenHeight)
         self:updateOptionsButtonPositions()
     end
 
-    -- Update title animation
     self.title.scale = self.title.scale + self.title.scaleDirection * self.title.scaleSpeed * dt
+    self.title.pulse = self.title.pulse + dt * 2
 
     if self.title.scale > self.title.maxScale then
         self.title.scale = self.title.maxScale
@@ -270,37 +286,38 @@ function Menu:update(dt, screenWidth, screenHeight)
 end
 
 function Menu:draw(screenWidth, screenHeight, state)
-    -- Draw animated title
-    love.graphics.setColor(0.2, 0.8, 1)  -- Cyan color for tech theme
+    local pulse = (math_sin(self.title.pulse) + 1) * 0.1
+    love.graphics.setColor(0.4 + pulse, 0.7 + pulse, 1, 1)
     love.graphics.setFont(self.largeFont)
 
     love.graphics.push()
-    love.graphics.translate(screenWidth / 2, screenHeight / 6)
-    love.graphics.rotate(math_sin(self.title.rotation) * 0.05)
+    love.graphics.translate(screenWidth / 2, screenHeight / 4)
+    love.graphics.rotate(math_sin(self.title.rotation) * 0.03)
     love.graphics.scale(self.title.scale, self.title.scale)
     love.graphics.printf(self.title.text, -screenWidth / 2, -self.largeFont:getHeight() / 2, screenWidth, "center")
     love.graphics.pop()
+
+    love.graphics.setColor(0.8, 0.9, 1, 0.8)
+    love.graphics.setFont(self.subtitleFont)
+    love.graphics.printf(self.title.subtitle, 0, screenHeight / 4 + 20, screenWidth, "center")
 
     if state == "menu" then
         if self.showHelp then
             self:drawHelpOverlay(screenWidth, screenHeight)
         else
             self:drawMenuButtons()
-            -- Draw instructions
-            love.graphics.setColor(0.9, 0.9, 0.9)
-            love.graphics.setFont(self.smallFont)
-            love.graphics.printf(
-                "Navigate the digital network, collect data bits, avoid viruses!\nActivate firewall to encrypt malicious software.",
-                0, screenHeight / 4 + 50, screenWidth, "center")
 
-            -- Draw help button
+            love.graphics.setColor(0.9, 0.9, 1)
+            love.graphics.setFont(self.smallFont)
+            love.graphics.printf("Collect Bits • Avoid Viruses • Use Power-ups • Find the Exit",
+                0, screenHeight / 2 - 40, screenWidth, "center")
+
             self:drawHelpButton()
         end
     elseif state == "options" then
         self:drawOptionsInterface()
     end
 
-    -- Draw copyright
     love.graphics.setColor(1, 1, 1, 0.5)
     love.graphics.setFont(self.smallFont)
     love.graphics.printf("© 2025 Jericho Crosby – BitsAndBytes", 10, screenHeight - 25, screenWidth - 20, "right")
@@ -308,17 +325,15 @@ end
 
 function Menu:drawHelpButton()
     local button = self.helpButton
+    local pulse = (math_sin(self.title.pulse * 2) + 1) * 0.2
 
-    -- Button background
-    love.graphics.setColor(0.3, 0.5, 0.8, 0.8)
+    love.graphics.setColor(button.color[1], button.color[2], button.color[3], 0.8 + pulse)
     love.graphics.circle("fill", button.x + button.width / 2, button.y + button.height / 2, button.width / 2)
 
-    -- Button border
-    love.graphics.setColor(0.6, 0.7, 1)
+    love.graphics.setColor(0.9, 0.9, 1)
     love.graphics.setLineWidth(2)
     love.graphics.circle("line", button.x + button.width / 2, button.y + button.height / 2, button.width / 2)
 
-    -- Question mark
     love.graphics.setColor(1, 1, 1)
     love.graphics.setFont(self.mediumFont)
     local textWidth = self.mediumFont:getWidth(button.text)
@@ -331,78 +346,86 @@ function Menu:drawHelpButton()
 end
 
 function Menu:drawHelpOverlay(screenWidth, screenHeight)
-    -- Semi-transparent overlay
-    love.graphics.setColor(0, 0, 0, 0.85)
+    love.graphics.setColor(0, 0, 0, 0.9)
     love.graphics.rectangle("fill", 0, 0, screenWidth, screenHeight)
 
-    -- Help box
-    local boxWidth = 600
-    local boxHeight = 500
+    local boxWidth = 700
+    local boxHeight = 550
     local boxX = (screenWidth - boxWidth) / 2
     local boxY = (screenHeight - boxHeight) / 2
 
-    -- Box background
-    love.graphics.setColor(0.1, 0.1, 0.2, 0.95)
-    love.graphics.rectangle("fill", boxX, boxY, boxWidth, boxHeight, 10)
+    love.graphics.setColor(0.1, 0.15, 0.25, 0.95)
+    love.graphics.rectangle("fill", boxX, boxY, boxWidth, boxHeight, 12)
 
-    -- Box border
-    love.graphics.setColor(0.3, 0.5, 0.8)
-    love.graphics.setLineWidth(3)
-    love.graphics.rectangle("line", boxX, boxY, boxWidth, boxHeight, 10)
+    love.graphics.setColor(0.3, 0.6, 1)
+    love.graphics.setLineWidth(4)
+    love.graphics.rectangle("line", boxX, boxY, boxWidth, boxHeight, 12)
+    love.graphics.setLineWidth(1)
 
-    -- Title
     love.graphics.setColor(1, 1, 1)
     love.graphics.setFont(self.largeFont)
-    love.graphics.printf("System Manual", boxX, boxY + 20, boxWidth, "center")
+    love.graphics.printf("BitsAndBytes Guide", boxX, boxY + 25, boxWidth, "center")
 
-    -- Help text
-    love.graphics.setColor(0.9, 0.9, 0.9)
+    love.graphics.setColor(0.9, 0.9, 1)
     love.graphics.setFont(self.smallFont)
+    local lineHeight = 20
 
-    local lineHeight = 22
+    local textTop = boxY + 90
+    local textHeight = boxHeight - 120
+    love.graphics.setScissor(boxX, textTop, boxWidth, textHeight)
+
     for i, line in ipairs(helpText) do
-        local y = boxY + 80 + (i - 1) * lineHeight
-        love.graphics.printf(line, boxX + 30, y, boxWidth - 60, "left")
+        local y = textTop + (i - 1) * lineHeight
+        if y + lineHeight < boxY + boxHeight - 20 then
+            if line == "" then
+                love.graphics.setColor(0.5, 0.6, 0.8, 0.5)
+                love.graphics.line(boxX + 40, y + 5, boxX + boxWidth - 40, y + 5)
+                love.graphics.setColor(0.9, 0.9, 1)
+            else
+                love.graphics.printf(line, boxX + 40, y, boxWidth - 80, "left")
+            end
+        end
     end
 
-    love.graphics.setLineWidth(1)
+    love.graphics.setScissor()
 end
 
 function Menu:drawOptionsInterface()
-    local totalSectionsHeight = 240
-    local startY = (self.screenHeight - totalSectionsHeight) / 2
+    local totalSectionsHeight = 280
+    local startY = (self.screenHeight - totalSectionsHeight) / 2 + 20
 
-    -- Draw section headers
     love.graphics.setFont(self.sectionFont)
-    love.graphics.setColor(0.8, 0.8, 1)
-    love.graphics.printf("Security Level", 0, startY + 15, self.screenWidth, "center")
-    love.graphics.printf("Protocol", 0, startY + 95, self.screenWidth, "center")
+    love.graphics.setColor(0.8, 0.9, 1)
+    love.graphics.printf("Select Difficulty", 0, startY + 15, self.screenWidth, "center")
+    love.graphics.printf("Choose Theme", 0, startY + 105, self.screenWidth, "center")
 
     self:updateOptionsButtonPositions()
     self:drawOptionSection("difficulty")
-    self:drawOptionSection("gameMode")
+    self:drawOptionSection("theme")
     self:drawOptionSection("navigation")
 end
 
 function Menu:drawOptionSection(section)
     for _, button in ipairs(self.optionsButtons) do
         if button.section == section then
-            -- Draw selection highlight first (behind the button)
+            local isSelected = false
             if button.action:sub(1, 10) == "difficulty" then
                 local difficulty = button.action:sub(12)
-                if difficulty == self.difficulty then
-                    love.graphics.setColor(0.2, 0.8, 0.2, 0.6)
-                    love.graphics.rectangle("fill", button.x - 4, button.y - 4, button.width + 8, button.height + 8, 6)
-                end
-            elseif button.action:sub(1, 8) == "gameMode" then
-                local gameMode = button.action:sub(10)
-                if gameMode == self.gameMode then
-                    love.graphics.setColor(0.2, 0.8, 0.2, 0.6)
-                    love.graphics.rectangle("fill", button.x - 4, button.y - 4, button.width + 8, button.height + 8, 6)
-                end
+                isSelected = difficulty == self.difficulty
+            elseif button.action:sub(1, 5) == "theme" then
+                local theme = button.action:sub(7)
+                isSelected = theme == self.theme
             end
 
-            -- Then draw the button on top
+            if isSelected then
+                love.graphics.setColor(1, 1, 1, 0.3)
+                love.graphics.rectangle("fill", button.x - 6, button.y - 6, button.width + 12, button.height + 12, 8)
+                love.graphics.setColor(1, 1, 1, 0.8)
+                love.graphics.setLineWidth(3)
+                love.graphics.rectangle("line", button.x - 6, button.y - 6, button.width + 12, button.height + 12, 8)
+                love.graphics.setLineWidth(1)
+            end
+
             self:drawButton(button)
         end
     end
@@ -415,12 +438,17 @@ function Menu:drawMenuButtons()
 end
 
 function Menu:drawButton(button)
-    love.graphics.setColor(0.25, 0.25, 0.4, 0.9)
-    love.graphics.rectangle("fill", button.x, button.y, button.width, button.height, 8, 8)
+    local pulse = (math_sin(self.title.pulse * 3) + 1) * 0.05
 
-    love.graphics.setColor(0.6, 0.6, 1)
+    love.graphics.setColor(button.color[1] * 0.3, button.color[2] * 0.3, button.color[3] * 0.3, 0.9)
+    love.graphics.rectangle("fill", button.x, button.y, button.width, button.height, 10, 10)
+
+    love.graphics.setColor(button.color[1] + pulse, button.color[2] + pulse, button.color[3] + pulse, 0.8)
+    love.graphics.rectangle("fill", button.x + 2, button.y + 2, button.width - 4, button.height - 4, 8, 8)
+
+    love.graphics.setColor(1, 1, 1, 0.8)
     love.graphics.setLineWidth(2)
-    love.graphics.rectangle("line", button.x, button.y, button.width, button.height, 8, 8)
+    love.graphics.rectangle("line", button.x, button.y, button.width, button.height, 10, 10)
 
     love.graphics.setColor(1, 1, 1)
     love.graphics.setFont(self.mediumFont)
@@ -442,7 +470,6 @@ function Menu:handleClick(x, y, state)
         end
     end
 
-    -- Check help button in menu state
     if state == "menu" then
         if self.helpButton and x >= self.helpButton.x and x <= self.helpButton.x + self.helpButton.width and
             y >= self.helpButton.y and y <= self.helpButton.y + self.helpButton.height then
@@ -450,7 +477,6 @@ function Menu:handleClick(x, y, state)
             return "help"
         end
 
-        -- If help is showing, any click closes it
         if self.showHelp then
             self.showHelp = false
             return "help_close"
@@ -468,12 +494,12 @@ function Menu:getDifficulty()
     return self.difficulty
 end
 
-function Menu:setGameMode(gameMode)
-    self.gameMode = gameMode
+function Menu:setTheme(theme)
+    self.theme = theme
 end
 
-function Menu:getGameMode()
-    return self.gameMode
+function Menu:getTheme()
+    return self.theme
 end
 
 return Menu

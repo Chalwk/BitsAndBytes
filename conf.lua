@@ -1,26 +1,22 @@
--- BitsAndBytes - Computer Themed Game
--- License: MIT
--- Copyright (c) 2025 Jericho Crosby (Chalwk)
-
 function love.conf(t)
-    t.identity = "BitsAndBytes"
+    t.identity = "bitsandbytes"
     t.version = "11.3"
     t.console = false
     t.accelerometerjoystick = true
     t.externalstorage = true
 
-    t.window.title = "BitsAndBytes"
+    t.window.title = "BitsAndBytes - Digital Maze"
     t.window.icon = nil
-    t.window.width = 800
-    t.window.height = 600
+    t.window.width = 1000
+    t.window.height = 700
     t.window.borderless = false
     t.window.resizable = true
-    t.window.minwidth = 500
-    t.window.minheight = 400
+    t.window.minwidth = 800
+    t.window.minheight = 600
     t.window.fullscreen = false
     t.window.fullscreentype = "desktop"
     t.window.vsync = 1
-    t.window.msaa = 0
+    t.window.msaa = 4
     t.window.depth = nil
     t.window.stencil = nil
     t.window.display = 1
